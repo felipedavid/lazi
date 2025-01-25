@@ -1,1 +1,1 @@
-clang -Wno-switch -O0 -std=c99 main.c -o lazi -g && ./lazi
+clang -Wno-switch -O0 -std=c99 lazi.c -o ./bin/lazi -g && ./bin/lazi
