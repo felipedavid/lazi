@@ -6,6 +6,7 @@
 #include <ctype.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stdarg.h>
 
 #define MAX(x, y) (((x) >= (y)) ? (x) : (y))
 
@@ -142,10 +143,27 @@ typedef enum {
     TOKEN_NAME,
 } TokenKind;
 
-const char *token_kind_name[] = {
-    [TOKEN_INT] = "TOKEN_INT",
-    [TOKEN_NAME] = "TOKEN_NAME",
-};
+
+const char *token_kind_name(TokenKind kind) {
+    static char buf[256];
+    switch (kind) {
+    case TOKEN_INT:
+        sprintf(buf, "integer");
+        break;
+    case TOKEN_NAME:
+        sprintf(buf, "name");
+        break;
+    default:
+        if (kind < 128 && isprint(kind)) {
+            sprintf(buf, "'%c'", kind);
+        } else {
+            sprintf(buf, "<ASCII %d>", kind);
+        }
+        break;
+    }
+
+    return buf;
+}
 
 typedef struct {
     TokenKind kind;
@@ -198,6 +216,11 @@ void next_token() {
     token.end = stream;
 }
 
+void init_stream(const char *str) {
+    stream = str;
+    next_token();
+}
+
 void print_token(Token token) {
     printf("[TOKEN: ");
     if (token.kind < 128) {
@@ -217,15 +240,15 @@ void print_token(Token token) {
     printf("\n");
 }
 
-inline bool is_token(TokenKind kind) {
+static inline bool is_token(TokenKind kind) {
     return token.kind == kind;
 }
 
-inline bool is_token_name(const char *name) {
+static inline bool is_token_name(const char *name) {
     return token.kind == TOKEN_NAME && token.name == name;
 }
 
-inline bool match_token(TokenKind kind) {
+static inline bool match_token(TokenKind kind) {
     if (is_token(kind)) {
         next_token();
         return true;
@@ -233,16 +256,15 @@ inline bool match_token(TokenKind kind) {
     return false;
 }
 
-inline bool expect_token(TokenKind kind) {
+static inline bool expect_token(TokenKind kind) {
     if (is_token(kind)) {
         next_token();
         return true;
     }
-    // TODO: Rewrite as a function, get_token_kind_name that also prints the single character
-    // kinds with '%c'
-    fatal("expected token %s: %s", token_kind_name[token.kind], token_kind_name[token.kind]);
+    fatal("expected token %s: %s", token_kind_name(token.kind), token_kind_name(kind));
     return false;
 }
+
 
 void lex_test() {
     const char *source = "XYZ+(XYZ)12345+994";
@@ -255,10 +277,102 @@ void lex_test() {
     }
 }
 
+/*
+ *
+ * expr3 = INT | '(' expr ')'
+ * expr2 = [-]expr3
+ * expr1 = expr2 ([*] expr2)*
+ * expr0 = expr1 ([+-] expr1)*
+ * expr = expr0
+ *
+ * */
+
+int parse_expr();
+
+int parse_expr3() {
+    int val;
+
+    if (is_token(TOKEN_INT)) {
+        val = token.intval;
+        next_token();
+    } else if (match_token('(')) {
+        val = parse_expr();
+        expect_token(')');
+    } else {
+        fatal("expected integer or '(', got %s\n", token_kind_name(token.kind));
+    }
+
+    return val;
+}
+
+int parse_expr2() {
+    int val = parse_expr3();
+
+    if (match_token('-')) {
+        val = -val;
+    }
+
+    return val;
+}
+
+int parse_expr1() {
+    int val = parse_expr2();
+
+    while (is_token('/') || is_token('*')) {
+        char op = token.kind;
+        next_token();
+        int rval = parse_expr2();
+
+        if (op == '/') {
+            val /= rval;
+        } else {
+            assert(op == '*');
+            val *= rval;
+        }
+    }
+
+    return val;
+}
+
+int parse_expr0() {
+    int val = parse_expr1();
+    while (is_token('+') || is_token('-')) {
+        char op = token.kind;
+        next_token();
+        int rval = parse_expr1();
+
+        if (op == '+') {
+            val += rval;
+        } else {
+            assert(op == '-');
+            val -= rval;
+        }
+    }
+
+    return val;
+}
+
+int parse_expr() {
+    return parse_expr0();
+}
+
+void test_parse_expr(const char *expr) {
+    init_stream(expr);
+    int res = parse_expr();
+    printf(expr);
+    printf(" = %d\n", res);
+}
+
+void parse_test() {
+    test_parse_expr("1+1");
+    test_parse_expr("4*(3+1)");
+}
+
 int main(int argc, char **argv) {
     buf_test();
     str_intern_test();
-    lex_test();
+    //lex_test();
+    parse_test();
 
     return 0;
 }
