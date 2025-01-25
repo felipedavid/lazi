@@ -306,13 +306,11 @@ int parse_expr3() {
 }
 
 int parse_expr2() {
-    int val = parse_expr3();
-
     if (match_token('-')) {
-        val = -val;
-    }
+        return -parse_expr2();
+    } 
 
-    return val;
+    return parse_expr3();
 }
 
 int parse_expr1() {
